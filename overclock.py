@@ -9,9 +9,10 @@ and package power limits. Requires root privileges and the 'msr' kernel module.
 import os
 import struct
 import sys
+from typing import TypedDict, cast, override
 
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont, QIntValidator
+from PyQt5.QtGui import QCloseEvent, QFont, QIntValidator
 from PyQt5.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
@@ -44,7 +45,7 @@ def read_msr(msr: int, cpu: int = 0) -> int:
     try:
         os.lseek(fd, msr, os.SEEK_SET)
         buf = os.read(fd, 8)
-        return struct.unpack("<Q", buf)[0]
+        return cast(int, struct.unpack("<Q", buf)[0])
     finally:
         os.close(fd)
 
@@ -65,8 +66,9 @@ def write_msr_all_cpus(msr: int, value: int) -> None:
 
 
 def online_cpus() -> list[int]:
-    cpus = []
-    for entry in os.listdir("/dev/cpu"):
+    cpus: list[int] = []
+    entries: list[str] = os.listdir("/dev/cpu")
+    for entry in entries:
         if entry.isdigit():
             cpus.append(int(entry))
     return sorted(cpus)
@@ -111,7 +113,7 @@ def set_turbo_enabled(enable: bool) -> None:
 
 def read_turbo_ratios() -> list[int]:
     raw = read_msr(MSR_TURBO_RATIO_LIMIT)
-    ratios = []
+    ratios: list[int] = []
     for i in range(8):
         ratios.append(bits(raw, i * 8 + 7, i * 8))
     return ratios
@@ -140,10 +142,20 @@ def read_rapl_units() -> tuple[float, float]:
 def _decode_time_window(field: int, time_unit: float) -> float:
     y = field & 0x1F
     z = (field >> 5) & 0x3
-    return (2 ** y) * (1.0 + z / 4.0) * time_unit
+    return (1 << y) * (1.0 + z / 4.0) * time_unit
 
 
-def read_power_limits(power_unit: float, time_unit: float) -> dict:
+class PowerLimits(TypedDict):
+    pl1_w: float
+    pl1_enabled: bool
+    pl1_time: float
+    pl2_w: float
+    pl2_enabled: bool
+    pl2_time: float
+    locked: bool
+
+
+def read_power_limits(power_unit: float, time_unit: float) -> PowerLimits:
     """Read PL1/PL2 watts, time windows, and lock status."""
     raw = read_msr(MSR_PKG_POWER_LIMIT)
     return {
@@ -226,7 +238,7 @@ def fan_interface_available() -> bool:
 
 def read_fan_status() -> dict[str, str]:
     """Parse /proc/acpi/ibm/fan, return dict with keys: status, speed, level."""
-    result = {}
+    result: dict[str, str] = {}
     with open(FAN_PROC_PATH, "r") as f:
         for line in f:
             if line.startswith("commands:"):
@@ -257,9 +269,38 @@ class OverclockWindow(QMainWindow):
         self.setWindowTitle("Ivy Bridge Overclock Manager")
         self.setMinimumWidth(500)
 
+        self.power_unit: float
+        self.time_unit: float
         self.power_unit, self.time_unit = read_rapl_units()
-        self.cpus = online_cpus()
-        self.fan_available = fan_interface_available()
+        self.cpus: list[int] = online_cpus()
+        self.fan_available: bool = fan_interface_available()
+
+        # Power limit widgets
+        self.pl1_slider: QSlider = QSlider(Qt.Horizontal)
+        self.pl1_label: QLabel = QLabel("-- W")
+        self.pl1_time_label: QLabel = QLabel("Time window: --")
+        self.pl2_slider: QSlider = QSlider(Qt.Horizontal)
+        self.pl2_label: QLabel = QLabel("-- W")
+        self.pl2_time_label: QLabel = QLabel("Time window: --")
+        self.pl_apply_btn: QPushButton = QPushButton("Apply Power Limits")
+
+        # Turbo widgets
+        self.turbo_checkbox: QCheckBox = QCheckBox("Enable Turbo Boost")
+
+        # Ratio widgets
+        self.ratio_inputs: list[QLineEdit] = []
+
+        # Frequency display widgets
+        self.freq_labels: list[QLabel] = []
+
+        # Fan widgets
+        self.fan_rpm_label: QLabel = QLabel("---- RPM")
+        self.fan_level_label: QLabel = QLabel("--")
+        self.fan_mode_combo: QComboBox = QComboBox()
+        self.fan_level_slider: QSlider = QSlider(Qt.Horizontal)
+        self.fan_slider_value_label: QLabel = QLabel("0")
+        self.fan_warning_label: QLabel = QLabel("")
+        self.fan_apply_btn: QPushButton = QPushButton("Apply Fan Setting")
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -274,7 +315,7 @@ class OverclockWindow(QMainWindow):
             layout.addWidget(self._build_fan_group())
 
         # Refresh timer for core speeds
-        self.timer = QTimer(self)
+        self.timer: QTimer = QTimer(self)
         self.timer.timeout.connect(self._refresh_core_speeds)
         self.timer.start(1000)
 
@@ -297,14 +338,12 @@ class OverclockWindow(QMainWindow):
         pl1_heading.setFont(bold)
         pl1_row.addWidget(pl1_heading)
 
-        self.pl1_slider = QSlider(Qt.Horizontal)
         self.pl1_slider.setMinimum(20)
         self.pl1_slider.setMaximum(60)
         self.pl1_slider.setTickPosition(QSlider.TicksBelow)
         self.pl1_slider.setTickInterval(5)
         self.pl1_slider.valueChanged.connect(self._on_pl1_slider_changed)
 
-        self.pl1_label = QLabel("-- W")
         self.pl1_label.setMinimumWidth(50)
         self.pl1_label.setAlignment(Qt.AlignCenter)
         self.pl1_label.setFont(bold)
@@ -315,7 +354,6 @@ class OverclockWindow(QMainWindow):
         pl1_row.addWidget(self.pl1_label)
         outer.addLayout(pl1_row)
 
-        self.pl1_time_label = QLabel("Time window: --")
         self.pl1_time_label.setStyleSheet(gray_style)
         outer.addWidget(self.pl1_time_label)
 
@@ -325,14 +363,12 @@ class OverclockWindow(QMainWindow):
         pl2_heading.setFont(bold)
         pl2_row.addWidget(pl2_heading)
 
-        self.pl2_slider = QSlider(Qt.Horizontal)
         self.pl2_slider.setMinimum(20)
         self.pl2_slider.setMaximum(60)
         self.pl2_slider.setTickPosition(QSlider.TicksBelow)
         self.pl2_slider.setTickInterval(5)
         self.pl2_slider.valueChanged.connect(self._on_pl2_slider_changed)
 
-        self.pl2_label = QLabel("-- W")
         self.pl2_label.setMinimumWidth(50)
         self.pl2_label.setAlignment(Qt.AlignCenter)
         self.pl2_label.setFont(bold)
@@ -343,12 +379,10 @@ class OverclockWindow(QMainWindow):
         pl2_row.addWidget(self.pl2_label)
         outer.addLayout(pl2_row)
 
-        self.pl2_time_label = QLabel("Time window: --")
         self.pl2_time_label.setStyleSheet(gray_style)
         outer.addWidget(self.pl2_time_label)
 
         # --- Apply button ---
-        self.pl_apply_btn = QPushButton("Apply Power Limits")
         self.pl_apply_btn.clicked.connect(self._apply_power_limits)
         outer.addWidget(self.pl_apply_btn)
 
@@ -374,7 +408,6 @@ class OverclockWindow(QMainWindow):
         group = QGroupBox("Turbo Boost")
         layout = QHBoxLayout(group)
 
-        self.turbo_checkbox = QCheckBox("Enable Turbo Boost")
         self.turbo_checkbox.stateChanged.connect(self._on_turbo_toggled)
 
         layout.addWidget(self.turbo_checkbox)
@@ -402,7 +435,6 @@ class OverclockWindow(QMainWindow):
         group = QGroupBox("Turbo Ratio Limits")
         layout = QGridLayout(group)
 
-        self.ratio_inputs: list[QLineEdit] = []
         validator = QIntValidator(20, 42)
 
         for i in range(4):
@@ -434,7 +466,7 @@ class OverclockWindow(QMainWindow):
         return group
 
     def _apply_ratios(self) -> None:
-        new_ratios = []
+        new_ratios: list[int] = []
         for i, edit in enumerate(self.ratio_inputs):
             text = edit.text().strip()
             if not text:
@@ -482,7 +514,6 @@ class OverclockWindow(QMainWindow):
         group = QGroupBox("Current CPU Core Speeds")
         layout = QVBoxLayout(group)
 
-        self.freq_labels: list[QLabel] = []
         mono = QFont("monospace", 10)
 
         for cpu in self.cpus:
@@ -533,7 +564,6 @@ class OverclockWindow(QMainWindow):
         rpm_heading.setFont(bold)
         status_row.addWidget(rpm_heading)
 
-        self.fan_rpm_label = QLabel("---- RPM")
         self.fan_rpm_label.setFont(mono)
         self.fan_rpm_label.setMinimumWidth(90)
         status_row.addWidget(self.fan_rpm_label)
@@ -544,7 +574,6 @@ class OverclockWindow(QMainWindow):
         level_heading.setFont(bold)
         status_row.addWidget(level_heading)
 
-        self.fan_level_label = QLabel("--")
         self.fan_level_label.setFont(mono)
         self.fan_level_label.setMinimumWidth(90)
         status_row.addWidget(self.fan_level_label)
@@ -564,7 +593,6 @@ class OverclockWindow(QMainWindow):
         mode_label.setFont(bold)
         mode_row.addWidget(mode_label)
 
-        self.fan_mode_combo = QComboBox()
         self.fan_mode_combo.addItems([
             "Auto", "Manual (level 0-7)", "Full-Speed", "Disengaged",
         ])
@@ -585,7 +613,6 @@ class OverclockWindow(QMainWindow):
 
         slider_row.addWidget(QLabel("0"))
 
-        self.fan_level_slider = QSlider(Qt.Horizontal)
         self.fan_level_slider.setMinimum(0)
         self.fan_level_slider.setMaximum(7)
         self.fan_level_slider.setTickPosition(QSlider.TicksBelow)
@@ -600,7 +627,6 @@ class OverclockWindow(QMainWindow):
 
         slider_row.addWidget(QLabel("7"))
 
-        self.fan_slider_value_label = QLabel("0")
         self.fan_slider_value_label.setMinimumWidth(30)
         self.fan_slider_value_label.setAlignment(Qt.AlignCenter)
         self.fan_slider_value_label.setFont(bold)
@@ -609,7 +635,6 @@ class OverclockWindow(QMainWindow):
         outer.addLayout(slider_row)
 
         # --- Warning label for dangerous modes ---
-        self.fan_warning_label = QLabel("")
         self.fan_warning_label.setStyleSheet(
             "color: #cc6600; font-size: 11px;"
         )
@@ -628,7 +653,6 @@ class OverclockWindow(QMainWindow):
         outer.addWidget(info_label)
 
         # --- Apply button ---
-        self.fan_apply_btn = QPushButton("Apply Fan Setting")
         self.fan_apply_btn.clicked.connect(self._apply_fan_setting)
         outer.addWidget(self.fan_apply_btn)
 
@@ -732,14 +756,15 @@ class OverclockWindow(QMainWindow):
 
     # -- Safety: restore fan on exit ----------------------------------------
 
-    def closeEvent(self, event) -> None:
+    @override
+    def closeEvent(self, a0: QCloseEvent) -> None:
         if self.fan_available:
             try:
                 write_fan_level("auto")
                 write_fan_watchdog(0)
             except Exception:
                 pass
-        event.accept()
+        a0.accept()
 
     # -- Load current values ------------------------------------------------
 

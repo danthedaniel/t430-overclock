@@ -9,3 +9,9 @@ dependencies = [
 
 [project.scripts]
 overclock = "overclock:main"
+
+[tool.basedpyright]
+venvPath = "."
+venv = "venv"
+reportUnusedCallResult = false
+reportImplicitStringConcatenation = false
