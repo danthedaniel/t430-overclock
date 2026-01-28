@@ -1,4 +1,4 @@
-# Overclock
+# T430 Overclock (Vibe Coded)
 
 PyQt5 GUI for Intel Ivy Bridge CPU overclock and power management.
 
