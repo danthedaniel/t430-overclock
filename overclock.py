@@ -41,7 +41,7 @@ IA32_PERF_STATUS = 0x198
 MSR_RAPL_POWER_UNIT = 0x606
 MSR_PKG_POWER_LIMIT = 0x610
 
-BCLK = 100.0  # MHz - fixed on Sandy/Ivy Bridge
+BCLK = 99.75  # MHz - fixed on Sandy/Ivy Bridge
 
 FAN_PROC_PATH = "/proc/acpi/ibm/fan"
 FAN_WATCHDOG_SECONDS = 30
@@ -459,7 +459,7 @@ class OverclockWindow(QMainWindow):
             edit.setValidator(validator)
             edit.setMaximumWidth(60)
             edit.setAlignment(Qt.AlignCenter)
-            ghz_label = QLabel("x100 MHz")
+            ghz_label = QLabel(f"x{BCLK:0.2f} MHz")
 
             layout.addWidget(label, i, 0)
             layout.addWidget(edit, i, 1)
