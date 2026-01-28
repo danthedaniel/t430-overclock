@@ -14,9 +14,21 @@ from typing import TypedDict, cast, override
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QCloseEvent, QFont, QIntValidator
 from PyQt5.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
-    QSlider, QVBoxLayout, QWidget,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
 
 # ---------------------------------------------------------------------------
@@ -38,6 +50,7 @@ FAN_WATCHDOG_SECONDS = 30
 # ---------------------------------------------------------------------------
 # Low-level MSR helpers (from ivybridge-oc.py)
 # ---------------------------------------------------------------------------
+
 
 def read_msr(msr: int, cpu: int = 0) -> int:
     path = f"/dev/cpu/{cpu}/msr"
@@ -95,6 +108,7 @@ def set_bits(orig: int, hi: int, lo: int, field: int) -> int:
 # ---------------------------------------------------------------------------
 # MSR read helpers
 # ---------------------------------------------------------------------------
+
 
 def read_turbo_enabled() -> bool:
     val = read_msr(IA32_MISC_ENABLE)
@@ -169,8 +183,7 @@ def read_power_limits(power_unit: float, time_unit: float) -> PowerLimits:
     }
 
 
-def write_pl_watts(pl1_w: float | None, pl2_w: float | None,
-                   power_unit: float) -> None:
+def write_pl_watts(pl1_w: float | None, pl2_w: float | None, power_unit: float) -> None:
     """Write PL1 and/or PL2 power limits, preserving other fields."""
     raw = read_msr(MSR_PKG_POWER_LIMIT)
     if pl1_w is not None:
@@ -186,6 +199,7 @@ def write_pl_watts(pl1_w: float | None, pl2_w: float | None,
 # ---------------------------------------------------------------------------
 # CPU temperature helpers (coretemp hwmon)
 # ---------------------------------------------------------------------------
+
 
 def _find_coretemp_hwmon() -> str | None:
     """Return the hwmon sysfs directory for the coretemp driver, or None."""
@@ -232,6 +246,7 @@ def read_core_temps() -> dict[int, float]:
 # ThinkPad fan control helpers (/proc/acpi/ibm/fan)
 # ---------------------------------------------------------------------------
 
+
 def fan_interface_available() -> bool:
     return os.path.exists(FAN_PROC_PATH)
 
@@ -262,6 +277,7 @@ def write_fan_watchdog(timeout: int) -> None:
 # ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
+
 
 class OverclockWindow(QMainWindow):
     def __init__(self):
@@ -471,15 +487,15 @@ class OverclockWindow(QMainWindow):
             text = edit.text().strip()
             if not text:
                 QMessageBox.warning(
-                    self, "Input Error",
-                    f"Please enter a ratio for {i + 1}-core turbo."
+                    self, "Input Error", f"Please enter a ratio for {i + 1}-core turbo."
                 )
                 return
             ratio = int(text)
             if ratio < 20 or ratio > 42:
                 QMessageBox.warning(
-                    self, "Input Error",
-                    f"{i + 1}-core ratio must be between 20 and 42."
+                    self,
+                    "Input Error",
+                    f"{i + 1}-core ratio must be between 20 and 42.",
                 )
                 return
             new_ratios.append(ratio)
@@ -489,9 +505,10 @@ class OverclockWindow(QMainWindow):
         for i in range(len(new_ratios) - 1):
             if new_ratios[i] < new_ratios[i + 1]:
                 QMessageBox.warning(
-                    self, "Input Error",
+                    self,
+                    "Input Error",
                     f"{i + 1}-core ratio ({new_ratios[i]}) must be >= "
-                    f"{i + 2}-core ratio ({new_ratios[i + 1]})."
+                    f"{i + 2}-core ratio ({new_ratios[i + 1]}).",
                 )
                 return
 
@@ -593,13 +610,16 @@ class OverclockWindow(QMainWindow):
         mode_label.setFont(bold)
         mode_row.addWidget(mode_label)
 
-        self.fan_mode_combo.addItems([
-            "Auto", "Manual (level 0-7)", "Full-Speed", "Disengaged",
-        ])
-        self.fan_mode_combo.setMinimumWidth(180)
-        self.fan_mode_combo.currentIndexChanged.connect(
-            self._on_fan_mode_changed
+        self.fan_mode_combo.addItems(
+            [
+                "Auto",
+                "Manual (level 0-7)",
+                "Full-Speed",
+                "Disengaged",
+            ]
         )
+        self.fan_mode_combo.setMinimumWidth(180)
+        self.fan_mode_combo.currentIndexChanged.connect(self._on_fan_mode_changed)
         mode_row.addWidget(self.fan_mode_combo)
 
         mode_row.addStretch()
@@ -620,9 +640,7 @@ class OverclockWindow(QMainWindow):
         self.fan_level_slider.setPageStep(1)
         self.fan_level_slider.setSingleStep(1)
         self.fan_level_slider.setEnabled(False)
-        self.fan_level_slider.valueChanged.connect(
-            self._on_fan_slider_changed
-        )
+        self.fan_level_slider.valueChanged.connect(self._on_fan_slider_changed)
         slider_row.addWidget(self.fan_level_slider, stretch=1)
 
         slider_row.addWidget(QLabel("7"))
@@ -635,9 +653,7 @@ class OverclockWindow(QMainWindow):
         outer.addLayout(slider_row)
 
         # --- Warning label for dangerous modes ---
-        self.fan_warning_label.setStyleSheet(
-            "color: #cc6600; font-size: 11px;"
-        )
+        self.fan_warning_label.setStyleSheet("color: #cc6600; font-size: 11px;")
         self.fan_warning_label.setWordWrap(True)
         self.fan_warning_label.setVisible(False)
         outer.addWidget(self.fan_warning_label)
@@ -659,7 +675,7 @@ class OverclockWindow(QMainWindow):
         return group
 
     def _on_fan_mode_changed(self, index: int) -> None:
-        is_manual = (index == 1)
+        is_manual = index == 1
         self.fan_level_slider.setEnabled(is_manual)
 
         if index == 3:  # Disengaged
@@ -670,14 +686,12 @@ class OverclockWindow(QMainWindow):
             self.fan_warning_label.setVisible(True)
         elif index == 2:  # Full-Speed
             self.fan_warning_label.setText(
-                "Full-speed mode runs the fan at maximum RPM. "
-                "This is loud but safe."
+                "Full-speed mode runs the fan at maximum RPM. This is loud but safe."
             )
             self.fan_warning_label.setVisible(True)
         elif is_manual and self.fan_level_slider.value() <= 1:
             self.fan_warning_label.setText(
-                "Warning: Very low fan levels may allow "
-                "dangerous CPU temperatures."
+                "Warning: Very low fan levels may allow dangerous CPU temperatures."
             )
             self.fan_warning_label.setVisible(True)
         else:
@@ -688,8 +702,7 @@ class OverclockWindow(QMainWindow):
         if self.fan_mode_combo.currentIndex() == 1:
             if value <= 1:
                 self.fan_warning_label.setText(
-                    "Warning: Very low fan levels may allow "
-                    "dangerous CPU temperatures."
+                    "Warning: Very low fan levels may allow dangerous CPU temperatures."
                 )
                 self.fan_warning_label.setVisible(True)
             else:
@@ -711,10 +724,12 @@ class OverclockWindow(QMainWindow):
 
         if index == 3:
             reply = QMessageBox.warning(
-                self, "Confirm Disengaged Mode",
+                self,
+                "Confirm Disengaged Mode",
                 "Disengaged mode removes firmware speed limits "
                 "on the fan.\n\nAre you sure you want to proceed?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
             )
             if reply != QMessageBox.Yes:
                 return
@@ -727,15 +742,14 @@ class OverclockWindow(QMainWindow):
                 write_fan_watchdog(0)
         except PermissionError:
             QMessageBox.critical(
-                self, "Permission Error",
+                self,
+                "Permission Error",
                 "Cannot write to fan control interface.\n\n"
                 "Ensure thinkpad_acpi is loaded with fan_control=1:\n"
-                "  modprobe thinkpad_acpi fan_control=1"
+                "  modprobe thinkpad_acpi fan_control=1",
             )
         except Exception as e:
-            QMessageBox.critical(
-                self, "Error", f"Failed to set fan level: {e}"
-            )
+            QMessageBox.critical(self, "Error", f"Failed to set fan level: {e}")
 
     def _refresh_fan_status(self) -> None:
         if not self.fan_available:
@@ -775,15 +789,11 @@ class OverclockWindow(QMainWindow):
 
             pl1_clamped = max(20, min(60, int(round(pl["pl1_w"]))))
             self.pl1_slider.setValue(pl1_clamped)
-            self.pl1_time_label.setText(
-                f"Time window: {pl['pl1_time']:.3f}s"
-            )
+            self.pl1_time_label.setText(f"Time window: {pl['pl1_time']:.3f}s")
 
             pl2_clamped = max(20, min(60, int(round(pl["pl2_w"]))))
             self.pl2_slider.setValue(pl2_clamped)
-            self.pl2_time_label.setText(
-                f"Time window: {pl['pl2_time']:.6f}s"
-            )
+            self.pl2_time_label.setText(f"Time window: {pl['pl2_time']:.6f}s")
         except Exception:
             self.pl1_slider.setValue(35)
             self.pl2_slider.setValue(45)
@@ -828,12 +838,8 @@ class OverclockWindow(QMainWindow):
                     self.fan_mode_combo.setCurrentIndex(0)
                 self.fan_mode_combo.blockSignals(False)
 
-                self.fan_rpm_label.setText(
-                    f"{status.get('speed', '?')} RPM"
-                )
-                self.fan_level_label.setText(
-                    status.get("level", "?")
-                )
+                self.fan_rpm_label.setText(f"{status.get('speed', '?')} RPM")
+                self.fan_level_label.setText(status.get("level", "?"))
 
                 if level != "auto":
                     write_fan_watchdog(FAN_WATCHDOG_SECONDS)
@@ -845,14 +851,16 @@ class OverclockWindow(QMainWindow):
 # Entrypoint
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     app = QApplication(sys.argv)
 
     if os.geteuid() != 0:
         QMessageBox.critical(
-            None, "Root Required",
+            None,
+            "Root Required",
             "This application must be run as root (sudo).\n\n"
-            "Please restart with: sudo ./overclock.py"
+            "Please restart with: sudo ./overclock.py",
         )
         sys.exit(1)
 
@@ -861,19 +869,20 @@ def main() -> None:
         os.system("modprobe msr 2>/dev/null")
         if not os.path.isdir("/dev/cpu"):
             QMessageBox.critical(
-                None, "MSR Module Missing",
-                "Cannot access /dev/cpu.\n"
-                "Load the msr module: modprobe msr"
+                None,
+                "MSR Module Missing",
+                "Cannot access /dev/cpu.\nLoad the msr module: modprobe msr",
             )
             sys.exit(1)
 
     # Check for thinkpad_acpi fan control (non-fatal)
     if not os.path.exists(FAN_PROC_PATH):
         QMessageBox.warning(
-            None, "Fan Control Unavailable",
+            None,
+            "Fan Control Unavailable",
             f"Fan control interface not found at {FAN_PROC_PATH}.\n\n"
             "Fan control features will be disabled.\n"
-            "To enable: modprobe thinkpad_acpi fan_control=1"
+            "To enable: modprobe thinkpad_acpi fan_control=1",
         )
 
     window = OverclockWindow()
