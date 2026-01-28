@@ -1,5 +1,7 @@
 # T430 Overclock (Vibe Coded)
 
+![Screenshot of the overclocking utility](screenshot.png)
+
 PyQt5 GUI for Intel Ivy Bridge CPU overclock and power management.
 
 Reads and writes Model-Specific Registers (MSRs) to control turbo ratios
