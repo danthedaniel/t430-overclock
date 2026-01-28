@@ -72,6 +72,15 @@ def online_cpus() -> list[int]:
     return sorted(cpus)
 
 
+def cpu_to_core(cpu: int) -> int:
+    """Map a logical CPU number to its physical core ID."""
+    try:
+        with open(f"/sys/devices/system/cpu/cpu{cpu}/topology/core_id") as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return cpu
+
+
 def bits(value: int, hi: int, lo: int) -> int:
     return (value >> lo) & ((1 << (hi - lo + 1)) - 1)
 
@@ -160,6 +169,51 @@ def write_pl_watts(pl1_w: float | None, pl2_w: float | None,
         raw = set_bits(raw, 47, 47, 1)  # enable PL2
     raw = set_bits(raw, 63, 63, 0)  # never set lock bit
     write_msr_all_cpus(MSR_PKG_POWER_LIMIT, raw)
+
+
+# ---------------------------------------------------------------------------
+# CPU temperature helpers (coretemp hwmon)
+# ---------------------------------------------------------------------------
+
+def _find_coretemp_hwmon() -> str | None:
+    """Return the hwmon sysfs directory for the coretemp driver, or None."""
+    base = "/sys/class/hwmon"
+    try:
+        for entry in os.listdir(base):
+            name_path = os.path.join(base, entry, "name")
+            if os.path.isfile(name_path):
+                with open(name_path) as f:
+                    if f.read().strip() == "coretemp":
+                        return os.path.join(base, entry)
+    except OSError:
+        pass
+    return None
+
+
+def read_core_temps() -> dict[int, float]:
+    """Return {core_index: temperature_celsius} from coretemp hwmon."""
+    hwmon = _find_coretemp_hwmon()
+    if hwmon is None:
+        return {}
+    temps: dict[int, float] = {}
+    idx = 1
+    while True:
+        label_path = os.path.join(hwmon, f"temp{idx}_label")
+        input_path = os.path.join(hwmon, f"temp{idx}_input")
+        if not os.path.isfile(input_path):
+            break
+        try:
+            with open(label_path) as f:
+                label = f.read().strip()  # e.g. "Core 0"
+            with open(input_path) as f:
+                millideg = int(f.read().strip())
+            if label.startswith("Core "):
+                core = int(label.split()[1])
+                temps[core] = millideg / 1000.0
+        except (OSError, ValueError):
+            pass
+        idx += 1
+    return temps
 
 
 # ---------------------------------------------------------------------------
@@ -440,13 +494,22 @@ class OverclockWindow(QMainWindow):
         return group
 
     def _refresh_core_speeds(self) -> None:
+        temps = read_core_temps()
         for i, cpu in enumerate(self.cpus):
             try:
                 ratio = read_perf_status(cpu)
                 mhz = ratio * BCLK
-                self.freq_labels[i].setText(
-                    f"CPU {cpu}:  {ratio:2d}x  ({mhz:4.0f} MHz)"
-                )
+                core_id = cpu_to_core(cpu)
+                temp = temps.get(core_id)
+                if temp is not None:
+                    self.freq_labels[i].setText(
+                        f"CPU {cpu}:  {ratio:2d}x  ({mhz:4.0f} MHz)"
+                        f"    {temp:.0f}\u00b0C"
+                    )
+                else:
+                    self.freq_labels[i].setText(
+                        f"CPU {cpu}:  {ratio:2d}x  ({mhz:4.0f} MHz)"
+                    )
             except Exception:
                 self.freq_labels[i].setText(f"CPU {cpu}:  read error")
 
