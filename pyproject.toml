@@ -1,0 +1,11 @@
+[project]
+name = "overclock"
+version = "0.1.0"
+description = "PyQt5 GUI for Intel Ivy Bridge CPU overclock and power management"
+requires-python = ">=3.10"
+dependencies = [
+    "PyQt5>=5.15",
+]
+
+[project.scripts]
+overclock = "overclock:main"
